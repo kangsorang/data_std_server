@@ -1,15 +1,15 @@
 const fs = require('fs');
 const es = require('event-stream');
-const util = require('util');
-var async = require("async");
 
 const JSON_EXTENSION = 'json'
 var lineNr = 0;
-var result = new Map();
+var dataErrorCnt = 0;
+
 /*
     Key : mac_sn
-    Value : [time...]
+    Value : [[startTime, endTime]...]
 */
+var connectionTimeLineData = new Map();
 
 const filterItem = [
     132344196746872,
@@ -84,8 +84,7 @@ const filterItem = [
     132344196746489
 ]
 
-var dataPath = './data/2019-02-23'
-var stat;
+var dataPath = './data'
 var targetFileList = [];
 function searchDir(path) {
     let items = fs.readdirSync(path)
@@ -109,12 +108,8 @@ function getFileExtension(fileName) {
     return fileName.split('.').pop();
 }
 
-async function doReadFileSync(file) {
-    await doReadFile(file);
-}
-
 function doReadFile(file) {
-    console.log("doReadFile : " + file)
+    console.log("doReadFile Start : " + file)
     return new Promise((resolve, reject) => {
         var s = fs.createReadStream(file)
             .pipe(es.split())
@@ -125,48 +120,71 @@ function doReadFile(file) {
                         mac_sn:"190090202749367"
                     */
                     lineNr++;
-                    let parsedLineData = JSON.parse(data);
-                    let event_time = parsedLineData.event_time;
-                    let mac_sn = parsedLineData.mac_sn;
-                    if (filterItem.includes(parseInt(mac_sn))) {
-                        if (result.has(mac_sn)) {
-                            let timeData = result.get(mac_sn)
-                            if( timeData[timeData.length - 1] != event_time) {
-                                timeData.push(event_time)
-                                result.set(mac_sn, timeData);
+                    try {
+                        let parsedLineData = JSON.parse(data);
+                        let event_time = parsedLineData.event_time + 9 * 60 * 60; //adjust UTC
+                        let mac_sn = parsedLineData.mac_sn;
+                        //console.log("mac_sn : " + mac_sn + " , event_time : " + event_time)
+    
+                        if (filterItem.includes(parseInt(mac_sn))) {
+                            //console.log("filterItem : " + filterItem + " mac_sn : " + mac_sn)
+                            if (connectionTimeLineData.has(mac_sn)) {
+                                let timeDataArr = connectionTimeLineData.get(mac_sn);
+                                let cursor = timeDataArr[timeDataArr.length - 1];
+                                let startTime = cursor[0];
+                                let endTime = cursor[1];
+                                if (endTime < event_time) {
+                                    connectionTimeLineData.get(mac_sn).push([event_time, event_time + 125])
+                                }
+                                else if(startTime < event_time && endTime > event_time) {
+                                    cursor[1] = event_time + 125
+                                }
+                            }
+                            else {
+                                connectionTimeLineData.set(mac_sn, [[event_time, event_time + 125]]);
                             }
                         }
-                        else {
-                            result.set(mac_sn, [event_time]);
-                        }
+                    }
+                    catch(exception) {
+                        console.log("Maybe too long data.....")
+                        dataErrorCnt++
                     }
                     s.resume(); 
                 },
                 function end () { //optional
                     //this.emit('end')
-                    resolve();
                     s.destroy();
+                    console.log("doReadFile End : " + file)
+                    resolve();
                 })
             )
     })
 }
 
-
-console.log("START")
 searchDir(dataPath)
-console.log("==== targetFileList ====")
 console.table(targetFileList)
-var promiseList = [];
-targetFileList.forEach(file => {
-    promiseList.push(doReadFile(file))
-})
-Promise.all(promiseList)
+
+targetFileList.reduce( async (previousPromise, file) => {
+    await previousPromise;
+    return doReadFile(file);
+}, Promise.resolve())
 .then(() => {
-    console.table(result)
+    console.table(connectionTimeLineData)
+    console.log("Error data count : " + dataErrorCnt)
     require('./server.js')
 })
 
-
+/*
+targetFileList.reduce((previousPromise, file) => {
+    return previousPromise.then(() => {
+        return new doReadFile(file);
+    });
+}, Promise.resolve())
+.then(() => {
+    console.table(connectionTimeLineData)
+    require('./server.js')
+})
+*/
 module.exports = {
-    result
+    connectionTimeLineData
 }

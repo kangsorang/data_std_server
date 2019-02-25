@@ -4,8 +4,8 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "async": "^2.6.2",
     "cors": "^2.8.5",
+    "dayjs": "^1.8.8",
     "event-stream": "^4.0.1",
     "express": "^4.16.4"
   }

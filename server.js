@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-var data = require('./index.js').result;
+var data = require('./index.js').connectionTimeLineData;
 const cors = require('cors');
 
 app.use(cors());
