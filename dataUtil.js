@@ -160,19 +160,6 @@ function doReadFile(file) {
     })
 }
 
-searchDir(dataPath)
-console.table(targetFileList)
-
-targetFileList.reduce( async (previousPromise, file) => {
-    await previousPromise;
-    return doReadFile(file);
-}, Promise.resolve())
-.then(() => {
-    console.table(connectionTimeLineData)
-    console.log("Error data count : " + dataErrorCnt)
-    require('./server.js')
-})
-
 /*
 targetFileList.reduce((previousPromise, file) => {
     return previousPromise.then(() => {
@@ -184,6 +171,28 @@ targetFileList.reduce((previousPromise, file) => {
     require('./server.js')
 })
 */
+
+function generateConnectionTimelineData() {
+    return new Promise((resolve, reject) => {
+        console.time("generateConnectionTimelineData")
+        //step 1. search dir and marking target files
+        searchDir(dataPath)
+        console.table(targetFileList)
+        
+        //step 2. read files and set data
+        targetFileList.reduce( async (previousPromise, file) => {
+            await previousPromise;
+            return doReadFile(file);
+        }, Promise.resolve())
+        .then(() => {
+            console.table(connectionTimeLineData)
+            console.log("Error data count : " + dataErrorCnt)
+            console.timeEnd("generateConnectionTimelineData")
+            resolve(connectionTimeLineData)
+        })
+    })
+}
+
 module.exports = {
-    connectionTimeLineData
+    generateConnectionTimelineData
 }
