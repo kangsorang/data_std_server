@@ -4,6 +4,7 @@ const es = require('event-stream');
 const JSON_EXTENSION = 'json'
 var lineNr = 0;
 var dataErrorCnt = 0;
+const CONNECTION_TIMEOUT = 180//sec
 
 /*
     Key : mac_sn
@@ -124,24 +125,22 @@ function doReadFile(file) {
                         let parsedLineData = JSON.parse(data);
                         let event_time = parsedLineData.event_time + 9 * 60 * 60; //adjust UTC
                         let mac_sn = parsedLineData.mac_sn;
-                        //console.log("mac_sn : " + mac_sn + " , event_time : " + event_time)
     
                         if (filterItem.includes(parseInt(mac_sn))) {
-                            //console.log("filterItem : " + filterItem + " mac_sn : " + mac_sn)
                             if (connectionTimeLineData.has(mac_sn)) {
                                 let timeDataArr = connectionTimeLineData.get(mac_sn);
                                 let cursor = timeDataArr[timeDataArr.length - 1];
                                 let startTime = cursor[0];
                                 let endTime = cursor[1];
                                 if (endTime < event_time) {
-                                    connectionTimeLineData.get(mac_sn).push([event_time, event_time + 125])
+                                    connectionTimeLineData.get(mac_sn).push([event_time, event_time + CONNECTION_TIMEOUT])
                                 }
                                 else if(startTime < event_time && endTime > event_time) {
-                                    cursor[1] = event_time + 125
+                                    cursor[1] = event_time + CONNECTION_TIMEOUT
                                 }
                             }
                             else {
-                                connectionTimeLineData.set(mac_sn, [[event_time, event_time + 125]]);
+                                connectionTimeLineData.set(mac_sn, [[event_time, event_time + CONNECTION_TIMEOUT]]);
                             }
                         }
                     }
@@ -151,7 +150,7 @@ function doReadFile(file) {
                     }
                     s.resume(); 
                 },
-                function end () { //optional
+                function end () {
                     //this.emit('end')
                     s.destroy();
                     console.log("doReadFile End : " + file)
