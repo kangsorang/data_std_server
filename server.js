@@ -1,8 +1,9 @@
 const express = require('express');
 const app = express();
-var generateConnectionTimelineData = require('./dataUtil').generateConnectionTimelineData;
+var { generateConnectionTimelineByReportData, generateConnectionTimelineByIHData} = require('./dataUtil')
 const cors = require('cors');
-let cachedData = new Map();
+let cachedReportData = new Map();
+let cachedIHData = new Map();
 app.use(cors());
 
 app.get('/', (req, res) => {
@@ -13,23 +14,45 @@ app.listen(2000, () => {
   console.log('Example app listening on port 2000!');
 });
 
-app.get("/getData", async (req, res, next) => {
+app.get("/getReportData", async (req, res, next) => {
   let shop = req.param("shop");
-  console.log("GET request /getData shop : " + shop)
+  console.log("GET request /getReportData shop : " + shop)
   if (shop == undefined) {
     //default to TOAL data
     shop = "TOTAL"
   }
   var sendData;
-  if (cachedData.has(shop)) {
+  if (cachedReportData.has(shop)) {
     //console.log("Use cached data")
-    sendData = cachedData.get(shop)
+    sendData = cachedReportData.get(shop)
   }
   else {
     console.log("Generate data")
-    sendData = await generateConnectionTimelineData(shop)
+    sendData = await generateConnectionTimelineByReportData(shop)
   }
-  cachedData.set(shop, sendData)
+  cachedReportData.set(shop, sendData)
+  let resData = JSON.stringify([...sendData])
+  let parsedData = JSON.parse(resData);
+  res.json(parsedData);
+});
+
+app.get("/getIHData", async (req, res, next) => {
+  let shop = req.param("shop");
+  console.log("GET request /getIHData shop : " + shop)
+  if (shop == undefined) {
+    //default to TOAL data
+    shop = "TOTAL"
+  }
+  var sendData;
+  if (cachedIHData.has(shop)) {
+    //console.log("Use cached data")
+    sendData = cachedIHData.get(shop)
+  }
+  else {
+    console.log("Generate data")
+    sendData = await generateConnectionTimelineByIHData(shop)
+  }
+  cachedIHData.set(shop, sendData)
   let resData = JSON.stringify([...sendData])
   let parsedData = JSON.parse(resData);
   res.json(parsedData);
