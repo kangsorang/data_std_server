@@ -4,6 +4,9 @@ const {TOTAL} = require('./shopData')
 const JSON_EXTENSION = 'json'
 const CONNECTION_TIMEOUT = 180//sec
 
+const REPORT_POSTFIX = "-rp"
+const IOTHUB_POSTFIX = "-ih"
+
 /*
     Key : mac_sn
     Value : [[startTime, endTime]...]
@@ -70,7 +73,7 @@ function processReportData(data, shop, resultMap) {
         if (data.trim() == '') return;
         let parsedLineData = JSON.parse(data);
         let event_time = parsedLineData.event_time// + 9 * 60 * 60; //adjust UTC
-        let mac_sn = parsedLineData.mac_sn;
+        let mac_sn = parsedLineData.mac_sn + REPORT_POSTFIX;
         
         if (!checkShopIncludes(shop, mac_sn)) {
             return;
@@ -114,7 +117,7 @@ function processIhData(data, shop, resultMap) {
         let parsedLineData = JSON.parse(data);
         let event_time = Math.floor(Date.parse(parsedLineData.time) / 1000) //1551957406031
         let properties = JSON.parse(parsedLineData.properties)
-        let mac_sn = properties.deviceId;
+        let mac_sn = properties.deviceId + IOTHUB_POSTFIX;
         let operationConnect = (parsedLineData.operationName == 'deviceConnect');
         
         if (!checkShopIncludes(shop, mac_sn)) {
