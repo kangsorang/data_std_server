@@ -52,8 +52,13 @@ app.get("/getIHData", async (req, res, next) => {
     console.log("Generate data")
     sendData = await generateConnectionTimelineByIHData(shop)
   }
-  cachedIHData.set(shop, sendData)
-  let resData = JSON.stringify([...sendData])
-  let parsedData = JSON.parse(resData);
-  res.json(parsedData);
+  if(sendData) {
+    cachedIHData.set(shop, sendData)
+    let resData = JSON.stringify([...sendData])
+    let parsedData = JSON.parse(resData);
+    res.json(parsedData);
+  }
+  else {
+    res.send();
+  }
 });

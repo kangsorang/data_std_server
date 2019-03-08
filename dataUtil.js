@@ -11,6 +11,8 @@ const IOTHUB_POSTFIX = "-ih"
     Key : mac_sn
     Value : [[startTime, endTime]...]
 */
+//var reportDataPath = './data_std_server/raw_data/data_qv25/report'
+//var ihDataPath = './data_std_server/raw_data/data_qv25/ih'
 var reportDataPath = './raw_data/data_qv25/report'
 var ihDataPath = './raw_data/data_qv25/ih'
 
@@ -44,14 +46,14 @@ function getFileExtension(fileName) {
     return fileName.split('.').pop();
 }
 
-function doReadFile(file, shop, resultMap, processFunc) {
+function doReadFile(file, shop, result, processFunc) {
     console.log("doReadFile Start : " + file + " shop : " + shop)
     return new Promise((resolve, reject) => {//TODO : reject case handling
         var s = fs.createReadStream(file)
             .pipe(es.split())
             .pipe(es.through(function write(data) {
                     s.pause();
-                    processFunc(data, shop, resultMap)
+                    processFunc(data, shop, result)
                     s.resume(); 
                 },
                 function end () {
@@ -100,7 +102,7 @@ function processReportData(data, shop, resultMap) {
     }
 }
 
-function processIhData(data, shop, resultMap) {
+function processIhData(data, shop, resultArr) {
     /*
     {
         "time": "2019-03-07T00:00:26Z",
@@ -112,10 +114,29 @@ function processIhData(data, shop, resultMap) {
         "location": "koreacentral"
     }
     */
+    /*
+    { 
+        "time": "2019-03-07T19:01:46Z", 
+        "resourceId": "/SUBSCRIPTIONS/5E2610CE-41BF-42FC-9386-F22FD1C48177/RESOURCEGROUPS/QV25-RG-DEV/PROVIDERS/MICROSOFT.DEVICES/IOTHUBS/QV25-IH-DEV", 
+        "operationName": "deviceDisconnect", 
+        "category": "Connections", 
+        "level": "Error", 
+        "resultType": "404104", 
+        "resultDescription": "DeviceConnectionClosedRemotely", 
+        "properties": "{\"deviceId\":\"62175304442320\",\"protocol\":\"Mqtt\",\"authType\":null,\"maskedIpAddress\":\"174.203.3.XXX\",\"statusCode\":\"404\"}", 
+        "location": "koreacentral"
+    }
+    */
     try {
         if (data.trim() == '') return;
         let parsedLineData = JSON.parse(data);
+        
         let event_time = Math.floor(Date.parse(parsedLineData.time) / 1000) //1551957406031
+        let operationName = parsedLineData.operationName
+        let category = parsedLineData.category;
+        let level = parsedLineData.level;
+        let resultType = parsedLineData.resultType;
+        let resultDescription = parsedLineData.resultDescription;
         let properties = JSON.parse(parsedLineData.properties)
         let mac_sn = properties.deviceId + IOTHUB_POSTFIX;
         let operationConnect = (parsedLineData.operationName == 'deviceConnect');
@@ -124,25 +145,98 @@ function processIhData(data, shop, resultMap) {
             return;
         }
 
-        if (resultMap.has(mac_sn)) {
-            let timeDataArr = resultMap.get(mac_sn);
-            if (operationConnect) {
-                resultMap.get(mac_sn).push([event_time, event_time])
-            }
-            else {
-                let cursor = timeDataArr[timeDataArr.length - 1]
-                cursor[1] = event_time
-            }
-        }
-        else {
-            if (operationConnect) {
-                resultMap.set(mac_sn, [[event_time, event_time]]);
-            }
-        }
+        resultArr.push({
+            deviceId : mac_sn,
+            event_time_vis : parsedLineData.time,
+            event_time,
+            operationName,
+            category,
+            level,
+            resultType,
+            resultDescription,
+            properties
+        })
     }
     catch(exception) {
         console.log("Maybe too long data..... : " + exception)
     }
+}
+
+function postProcessIhData(dataArr) {
+    /*
+    {
+        deviceId: "132344196747055-ih",
+        event_time_vis: "2019-03-07T18:16:15Z",
+        event_time: 1551982575,
+        operationName: "deviceDisconnect",
+        category: "Connections",
+        level: "Information",
+        properties: {
+            deviceId: "132344196747055",
+            protocol: "Mqtt",
+            authType: null,
+            maskedIpAddress: "174.203.3.XXX",
+            statusCode: null
+        }
+    },
+    {
+        deviceId: "132344196747055-ih",
+        event_time_vis: "2019-03-07T19:02:52Z",
+        event_time: 1551985372,
+        operationName: "deviceDisconnect",
+        category: "Connections",
+        level: "Error",
+        resultType: "404104",
+        resultDescription: "DeviceConnectionClosedRemotely",
+        properties: {
+            deviceId: "132344196747055",
+            protocol: "Mqtt",
+            authType: null,
+            maskedIpAddress: "174.203.3.XXX",
+            statusCode: "404"
+        }
+    }...
+    */
+    let resultMap = new Map();
+    let connFlag = false;
+    for (var i = 0; i < dataArr.length; i++) {
+        let item = dataArr[i];
+        let mac_sn = item.deviceId;
+        //console.log(">>" + mac_sn)
+        let event_time = item.event_time;
+        if (resultMap.has(mac_sn)) {
+            let timeDataArr = resultMap.get(mac_sn);
+            if (item.operationName == 'deviceConnect' && item.level !== "Error") {
+                if (connFlag) {
+                    
+                }
+                else {
+                    //resultMap.get(mac_sn).push([event_time, event_time])
+                }
+                connFlag = true;
+            }
+            else {
+                if (connFlag) {
+                    let cursor = timeDataArr[timeDataArr.length - 1]
+                    cursor[1] = event_time
+                }
+                else {
+                    //
+                }
+                connFlag = false;
+            }
+        }
+        else {
+            if (item.operationName == 'deviceConnect' && item.level !== "Error") {
+                resultMap.set(mac_sn, [[event_time, event_time]]);
+                connFlag = true;
+            }
+            else {
+                connFlag = false;
+            }
+        }
+    }
+    return resultMap;
 }
 
 function checkShopIncludes(shop, mac_sn) {
@@ -202,22 +296,17 @@ function generateConnectionTimelineByIHData(shop) {
         console.table(ihFileList)
         
         //step 2. read files and set data
-        let reportData = new Map();
+        //let reportData = new Map();
+        let ihDataArr = []
         ihFileList.reduce( async (previousPromise, file) => {
             await previousPromise;
-            return doReadFile(file, shop, reportData, processIhData);
+            return doReadFile(file, shop, ihDataArr, processIhData);
         }, Promise.resolve())
         .then(() => {
-            console.table(reportData)
+            let resultMap = postProcessIhData(ihDataArr)
+            console.table(resultMap)
             console.timeEnd("generateConnectionTimelineByIHData")
-            /*
-            eval(shop).forEach(macsn => {
-                if (!connectionTimeLineData.has('' + macsn)) {
-                    connectionTimeLineData.set('' + macsn, [[]])
-                }
-            })
-            */
-            resolve(reportData)
+            resolve(resultMap)
         })
         .catch(() => {
             reject();
